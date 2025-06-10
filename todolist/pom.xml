@@ -20,6 +20,13 @@
             <artifactId>javafx-fxml</artifactId>
             <version>23</version>
         </dependency>
+
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <version>8.4.0</version>
+        </dependency>
+
     </dependencies>
     <build>
         <plugins>
@@ -34,14 +41,11 @@
             <plugin>
                 <groupId>org.openjfx</groupId>
                 <artifactId>javafx-maven-plugin</artifactId>
-                <version>0.0.6</version>
-                <executions>
+                <version>0.0.8</version> <executions>
                     <execution>
-                        <!-- Default configuration for running -->
-                        <!-- Usage: mvn clean javafx:run -->
                         <id>default-cli</id>
                         <configuration>
-                            <mainClass>com.todolist.App</mainClass>
+                            <mainClass>com.todolist.TodoApp</mainClass>
                         </configuration>
                     </execution>
                 </executions>
