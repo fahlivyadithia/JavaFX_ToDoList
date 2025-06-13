@@ -1,37 +1,30 @@
 package com.todolist;
 
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Statement;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
-
 import javafx.application.Application;
+import javafx.beans.property.SimpleBooleanProperty;
+import javafx.beans.value.ObservableValue;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
 import javafx.scene.Scene;
-import javafx.scene.control.Alert;
-import javafx.scene.control.Button;
-import javafx.scene.control.ButtonType;
-import javafx.scene.control.Label;
-import javafx.scene.control.TableColumn;
-import javafx.scene.control.TableView;
-import javafx.scene.control.TextField;
+import javafx.scene.control.*;
+import javafx.scene.control.cell.CheckBoxTableCell;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
+import javafx.util.Callback;
+
+import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
 
 public class TodoApp extends Application {
 
     private static final String DB_URL = "jdbc:mysql://localhost:3306/todolist?serverTimezone=UTC";
     private static final String DB_USER = "root";
-    private static final String DB_PASS = ""; 
+    private static final String DB_PASS = "";
 
     private final TableView<Tugas> tableView = new TableView<>();
     private final ObservableList<Tugas> daftarTugasObservable = FXCollections.observableArrayList();
@@ -44,21 +37,48 @@ public class TodoApp extends Application {
     public void start(Stage primaryStage) {
         primaryStage.setTitle("Aplikasi To-Do List");
 
+        // Kolom ID
         TableColumn<Tugas, Integer> idCol = new TableColumn<>("ID");
         idCol.setCellValueFactory(new PropertyValueFactory<>("id"));
+
+        // Kolom Deskripsi
         TableColumn<Tugas, String> descCol = new TableColumn<>("Deskripsi Tugas");
         descCol.setCellValueFactory(new PropertyValueFactory<>("deskripsi"));
         descCol.setPrefWidth(250);
-        TableColumn<Tugas, Status> statusCol = new TableColumn<>("Status");
-        statusCol.setCellValueFactory(new PropertyValueFactory<>("status"));
+
+        // Kolom Status (Checkbox)
+        TableColumn<Tugas, Boolean> statusCol = new TableColumn<>("Selesai?");
+        statusCol.setCellValueFactory(param -> {
+            Tugas tugas = param.getValue();
+            return new SimpleBooleanProperty(tugas.getStatus() == Status.SELESAI);
+        });
+
+        statusCol.setCellFactory(CheckBoxTableCell.forTableColumn(statusCol));
+        statusCol.setEditable(true);
+        tableView.setEditable(true);
+
+        // Listener untuk update status di database saat checkbox diubah
+        statusCol.setCellValueFactory(new Callback<TableColumn.CellDataFeatures<Tugas, Boolean>, ObservableValue<Boolean>>() {
+            @Override
+            public ObservableValue<Boolean> call(TableColumn.CellDataFeatures<Tugas, Boolean> param) {
+                Tugas tugas = param.getValue();
+                SimpleBooleanProperty prop = new SimpleBooleanProperty(tugas.getStatus() == Status.SELESAI);
+                prop.addListener((observable, oldValue, newValue) -> {
+                    tugas.setStatus(newValue ? Status.SELESAI : Status.BELUM_SELESAI);
+                    updateStatusDiDb(tugas.getId(), tugas.getStatus());
+                });
+                return prop;
+            }
+        });
+
         tableView.getColumns().addAll(idCol, descCol, statusCol);
 
-        HBox formTambah = new HBox(10);
+        // Form Tambah
         TextField inputDeskripsi = new TextField();
-        inputDeskripsi.setPromptText("Masukkan deskripsi tugas baru");
+        inputDeskripsi.setPromptText("Masukkan deskripsi tugas");
         inputDeskripsi.setPrefWidth(300);
         Button btnTambah = new Button("Tambah");
-
+        btnTambah.setStyle("-fx-background-color: #4CAF50; -fx-text-fill: white;");
         btnTambah.setOnAction(e -> {
             String deskripsi = inputDeskripsi.getText();
             if (!deskripsi.trim().isEmpty()) {
@@ -67,63 +87,80 @@ public class TodoApp extends Application {
                 inputDeskripsi.clear();
             }
         });
-        formTambah.getChildren().addAll(inputDeskripsi, btnTambah);
 
-        HBox areaAksi = new HBox(10);
-        Button btnSelesai = new Button("Tandai Selesai");
-        Button btnHapus = new Button("Hapus Tugas");
+        HBox formTambah = new HBox(10, inputDeskripsi, btnTambah);
 
-        btnSelesai.setOnAction(e -> {
-            Tugas tugasTerpilih = tableView.getSelectionModel().getSelectedItem();
-            if (tugasTerpilih != null) {
-                updateStatusDiDb(tugasTerpilih.getId(), Status.SELESAI);
-                refreshTabelTugas();
-            }
-        });
-
+        // Area Aksi (hapus, edit)
+        Button btnHapus = new Button("Hapus");
+        btnHapus.setStyle("-fx-background-color: #f44336; -fx-text-fill: white;");
         btnHapus.setOnAction(e -> {
-            Tugas tugasTerpilih = tableView.getSelectionModel().getSelectedItem();
-            if (tugasTerpilih != null) {
+            Tugas tugas = tableView.getSelectionModel().getSelectedItem();
+            if (tugas != null) {
                 Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
                 alert.setTitle("Konfirmasi Hapus");
-                alert.setHeaderText("Hapus tugas: " + tugasTerpilih.getDeskripsi());
+                alert.setHeaderText("Hapus tugas: " + tugas.getDeskripsi());
                 alert.setContentText("Apakah Anda yakin?");
                 Optional<ButtonType> result = alert.showAndWait();
                 if (result.isPresent() && result.get() == ButtonType.OK) {
-                    hapusTugasDariDb(tugasTerpilih.getId());
+                    hapusTugasDariDb(tugas.getId());
                     refreshTabelTugas();
                 }
             }
         });
-        areaAksi.getChildren().addAll(btnSelesai, btnHapus);
 
-        VBox layoutUtama = new VBox(15);
-        layoutUtama.setPadding(new Insets(15));
-        layoutUtama.getChildren().addAll(new Label("Daftar Tugas Anda"), tableView, formTambah, areaAksi);
+        Button btnEdit = new Button("Edit");
+        btnEdit.setStyle("-fx-background-color: #2196F3; -fx-text-fill: white;");
+        btnEdit.setOnAction(e -> {
+            Tugas tugas = tableView.getSelectionModel().getSelectedItem();
+            if (tugas != null) {
+                TextField inputEdit = new TextField(tugas.getDeskripsi());
+                inputEdit.setPrefWidth(300);
+                Alert alertEdit = new Alert(Alert.AlertType.CONFIRMATION);
+                alertEdit.setTitle("Edit Tugas");
+                alertEdit.setHeaderText("Edit deskripsi tugas:");
+                alertEdit.getDialogPane().setContent(inputEdit);
+                Optional<ButtonType> result = alertEdit.showAndWait();
+                if (result.isPresent() && result.get() == ButtonType.OK) {
+                    String deskripsiBaru = inputEdit.getText();
+                    if (!deskripsiBaru.trim().isEmpty()) {
+                        updateDeskripsiTugas(tugas.getId(), deskripsiBaru);
+                        refreshTabelTugas();
+                    }
+                }
+            }
+        });
 
-        Scene scene = new Scene(layoutUtama, 500, 500);
+        HBox aksiBox = new HBox(10, btnEdit, btnHapus);
+
+        // Layout utama
+        VBox layout = new VBox(15);
+        layout.setPadding(new Insets(15));
+        Label header = new Label("Daftar Tugas");
+        header.setStyle("-fx-font-size: 18px; -fx-font-weight: bold;");
+        layout.getChildren().addAll(header, tableView, formTambah, aksiBox);
+
+        Scene scene = new Scene(layout, 550, 500);
         primaryStage.setScene(scene);
         primaryStage.show();
 
         refreshTabelTugas();
     }
 
-    // --- METODE DATABASE YANG SUDAH DIPERBAIKI SEPENUHNYA ---
+    // ===================== FUNGSI DATABASE ========================
 
     private void refreshTabelTugas() {
         try {
-            List<Tugas> daftarTugas = ambilSemuaTugasDariDb();
-            daftarTugasObservable.setAll(daftarTugas);
+            List<Tugas> daftar = ambilSemuaTugasDariDb();
+            daftarTugasObservable.setAll(daftar);
             tableView.setItems(daftarTugasObservable);
         } catch (SQLException e) {
-            showAlertError("Gagal Memuat Data", "Tidak dapat mengambil data dari database: " + e.getMessage());
+            showAlertError("Gagal Memuat Data", e.getMessage());
         }
     }
 
     private List<Tugas> ambilSemuaTugasDariDb() throws SQLException {
-        // PERBAIKAN FINAL: Menggunakan nama tabel tb_tugas
         String sql = "SELECT id_tugas, deskripsi_tugas, status_tugas FROM tb_tugas ORDER BY id_tugas";
-        List<Tugas> daftarTugas = new ArrayList<>();
+        List<Tugas> list = new ArrayList<>();
         try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASS);
              Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(sql)) {
@@ -131,56 +168,62 @@ public class TodoApp extends Application {
                 int id = rs.getInt("id_tugas");
                 String deskripsi = rs.getString("deskripsi_tugas");
                 Status status = rs.getInt("status_tugas") == 1 ? Status.SELESAI : Status.BELUM_SELESAI;
-                
-                daftarTugas.add(new Tugas(id, deskripsi, status));
+                list.add(new Tugas(id, deskripsi, status));
             }
         }
-        return daftarTugas;
+        return list;
     }
 
     private void tambahTugasKeDb(String deskripsi) {
-        // PERBAIKAN FINAL: Menggunakan nama tabel tb_tugas
-        String sql = "INSERT INTO tb_tugas(deskripsi_tugas, status_tugas) VALUES(?, ?)";
+        String sql = "INSERT INTO tb_tugas(deskripsi_tugas, status_tugas) VALUES (?, 0)";
         try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASS);
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, deskripsi);
-            pstmt.setInt(2, 0); // 0 untuk BELUM_SELESAI
             pstmt.executeUpdate();
         } catch (SQLException e) {
-            showAlertError("Gagal Menambah Tugas", "Error: " + e.getMessage());
+            showAlertError("Gagal Menambah", e.getMessage());
         }
     }
 
-    private void updateStatusDiDb(int id, Status newStatus) {
-        // PERBAIKAN FINAL: Menggunakan nama tabel tb_tugas
+    private void updateStatusDiDb(int id, Status status) {
         String sql = "UPDATE tb_tugas SET status_tugas = ? WHERE id_tugas = ?";
         try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASS);
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setInt(1, 1); // 1 untuk SELESAI
+            pstmt.setInt(1, status == Status.SELESAI ? 1 : 0);
             pstmt.setInt(2, id);
             pstmt.executeUpdate();
         } catch (SQLException e) {
-            showAlertError("Gagal Update Status", "Error: " + e.getMessage());
+            showAlertError("Gagal Update Status", e.getMessage());
+        }
+    }
+
+    private void updateDeskripsiTugas(int id, String deskripsiBaru) {
+        String sql = "UPDATE tb_tugas SET deskripsi_tugas = ? WHERE id_tugas = ?";
+        try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASS);
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, deskripsiBaru);
+            pstmt.setInt(2, id);
+            pstmt.executeUpdate();
+        } catch (SQLException e) {
+            showAlertError("Gagal Edit", e.getMessage());
         }
     }
 
     private void hapusTugasDariDb(int id) {
-        // PERBAIKAN FINAL: Menggunakan nama tabel tb_tugas
         String sql = "DELETE FROM tb_tugas WHERE id_tugas = ?";
         try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASS);
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setInt(1, id);
             pstmt.executeUpdate();
         } catch (SQLException e) {
-            showAlertError("Gagal Menghapus Tugas", "Error: " + e.getMessage());
+            showAlertError("Gagal Menghapus", e.getMessage());
         }
     }
 
-    private void showAlertError(String title, String message) {
+    private void showAlertError(String title, String msg) {
         Alert alert = new Alert(Alert.AlertType.ERROR);
         alert.setTitle(title);
-        alert.setHeaderText(null);
-        alert.setContentText(message);
+        alert.setContentText(msg);
         alert.showAndWait();
     }
 }
