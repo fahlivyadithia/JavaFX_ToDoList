@@ -1,34 +1,40 @@
 package com.todolist;
 
-import javafx.beans.property.IntegerProperty;
-import javafx.beans.property.ObjectProperty;
-import javafx.beans.property.SimpleIntegerProperty;
-import javafx.beans.property.SimpleObjectProperty;
-import javafx.beans.property.SimpleStringProperty;
-import javafx.beans.property.StringProperty;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 
 public class Tugas {
-    private final IntegerProperty id;
-    private final StringProperty deskripsi;
-    private final ObjectProperty<Status> status;
+    private int id;
+    private String deskripsi;
+    private LocalDate tglDibuat;
+    private LocalDate tglTarget;
+    private List<SubTugas> daftarSubTugas = new ArrayList<>();
 
-    public Tugas(int id, String deskripsi, Status status) {
-        this.id = new SimpleIntegerProperty(id);
-        this.deskripsi = new SimpleStringProperty(deskripsi);
-        this.status = new SimpleObjectProperty<>(status);
+    public Tugas(int id, String deskripsi, LocalDate tglDibuat, LocalDate tglTarget) {
+        this.id = id;
+        this.deskripsi = deskripsi;
+        this.tglDibuat = tglDibuat;
+        this.tglTarget = tglTarget;
     }
 
-    // --- Getters ---
-    public int getId() { return id.get(); }
-    public String getDeskripsi() { return deskripsi.get(); }
-    public Status getStatus() { return status.get(); }
+    public double getProgres() {
+        if (daftarSubTugas == null || daftarSubTugas.isEmpty()) {
+            return 0.0;
+        }
+        long jumlahSelesai = daftarSubTugas.stream().filter(SubTugas::isSelesai).count();
+        return (double) jumlahSelesai / daftarSubTugas.size();
+    }
 
-    // --- Setters ---
-    public void setDeskripsi(String value) { deskripsi.set(value); }
-    public void setStatus(Status value) { status.set(value); }
-    
-    // --- Property Getters (Penting untuk JavaFX TableView) ---
-    public IntegerProperty idProperty() { return id; }
-    public StringProperty deskripsiProperty() { return deskripsi; }
-    public ObjectProperty<Status> statusProperty() { return status; }
+    // Getters dan Setters
+    public int getId() { return id; }
+    public void setId(int id) { this.id = id; }
+    public String getDeskripsi() { return deskripsi; }
+    public void setDeskripsi(String deskripsi) { this.deskripsi = deskripsi; }
+    public LocalDate getTglDibuat() { return tglDibuat; }
+    public void setTglDibuat(LocalDate tglDibuat) { this.tglDibuat = tglDibuat; }
+    public LocalDate getTglTarget() { return tglTarget; }
+    public void setTglTarget(LocalDate tglTarget) { this.tglTarget = tglTarget; }
+    public List<SubTugas> getDaftarSubTugas() { return daftarSubTugas; }
+    public void setDaftarSubTugas(List<SubTugas> daftarSubTugas) { this.daftarSubTugas = daftarSubTugas; }
 }
